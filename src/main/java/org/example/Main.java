@@ -63,7 +63,9 @@
 //        System.out.println("Скорость ветра: " + windSpeed + " м/с");
 //    }
 //}
-////3d1c71d4819701c9dd664b270ae489fe - API key Минска
+////3d1c71d4819701c9dd664b270ae489fe - API key
+
+
 
 package org.example;
 
@@ -72,179 +74,284 @@ import org.json.JSONObject;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.net.URI;
+import java.net.URL;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
 
 public class Main {
 
-    private static final String API_BASE = "https://api.openweathermap.org/data/2.5/weather";
     private static final String API_KEY = "3d1c71d4819701c9dd664b270ae489fe";
+    private static final String WEATHER_URL = "https://api.openweathermap.org/data/2.5/weather";
+    private static final String FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast";
 
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
 
     private JFrame frame;
+    private JPanel rootPanel;
 
-    private JTextField cityField;
+    private JTextField cityField, latField, lonField;
+    private JRadioButton byCityRadio, byCoordRadio;
+    private JButton weatherButton, forecastButton, clearButton;
 
-    private JRadioButton byCityRadio;
-    private JRadioButton byCoordRadio;
-
-    private JTextField latField;
-    private JTextField lonField;
-
-    private JButton fetchButton;
-    private JButton clearButton;
-
-    private JLabel statusLabel;
     private JTextArea outputArea;
+    private JLabel statusLabel, iconLabel;
+
+    private boolean isRussian = true;
+    private String currentLang = "ru";
+
+    private JLabel modeLabel, cityLabel, coordLabel;
+    private TitledBorder paramsBorder, resultBorder;
+
+    private JMenu menuLanguage, menuColor, menuAbout;
+    private JMenuItem menuRu, menuEn;
+
+    private final Map<String, Color> colors = new LinkedHashMap<>();
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new Main().start());
     }
 
     private void start() {
-        frame = new JFrame("Погода (OpenWeatherMap)");
-        frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        frame.setMinimumSize(new Dimension(720, 520));
+        initColors();
 
+        frame = new JFrame();
+        frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        frame.setMinimumSize(new Dimension(900, 520));
+
+        frame.setJMenuBar(buildMenu());
         frame.setContentPane(buildUi());
         frame.setLocationRelativeTo(null);
+
+        applyLanguage();
         frame.setVisible(true);
     }
 
+    private JMenuBar buildMenu() {
+        JMenuBar bar = new JMenuBar();
+
+        menuLanguage = new JMenu();
+        menuRu = new JMenuItem();
+        menuEn = new JMenuItem();
+
+        menuRu.addActionListener(e -> switchLanguage(true));
+        menuEn.addActionListener(e -> switchLanguage(false));
+
+        menuLanguage.add(menuRu);
+        menuLanguage.add(menuEn);
+
+        menuColor = new JMenu();
+        buildColorMenu();
+
+        menuAbout = new JMenu();
+        JMenuItem aboutItem = new JMenuItem();
+        aboutItem.addActionListener(e ->
+                JOptionPane.showMessageDialog(frame,
+                        tr("Программа погоды\nИспользует OpenWeatherMap API",
+                                "Weather application\nUses OpenWeatherMap API"),
+                        tr("О программе", "About"),
+                        JOptionPane.INFORMATION_MESSAGE
+                )
+        );
+        menuAbout.add(aboutItem);
+
+        bar.add(menuLanguage);
+        bar.add(menuColor);
+        bar.add(menuAbout);
+
+        return bar;
+    }
+
+    private void initColors() {
+        colors.put("WHITE", Color.WHITE);
+        colors.put("LIGHT_GRAY", Color.LIGHT_GRAY);
+        colors.put("GRAY", Color.GRAY);
+        colors.put("PINK", Color.PINK);
+        colors.put("CYAN", Color.CYAN);
+        colors.put("YELLOW", Color.YELLOW);
+        colors.put("ORANGE", Color.ORANGE);
+        colors.put("GREEN", Color.GREEN);
+        colors.put("BLUE", new Color(170, 200, 255));
+        colors.put("VIOLET", new Color(200, 170, 255));
+    }
+
+    private void buildColorMenu() {
+        menuColor.removeAll();
+        for (String key : colors.keySet()) {
+            JMenuItem item = new JMenuItem(tr(colorRu(key), colorEn(key)));
+            item.addActionListener(e -> setBackgroundColor(colors.get(key)));
+            menuColor.add(item);
+        }
+    }
+
+    private String colorRu(String key) {
+        return switch (key) {
+            case "WHITE" -> "Белый";
+            case "LIGHT_GRAY" -> "Светло-серый";
+            case "GRAY" -> "Серый";
+            case "PINK" -> "Розовый";
+            case "CYAN" -> "Голубой";
+            case "YELLOW" -> "Жёлтый";
+            case "ORANGE" -> "Оранжевый";
+            case "GREEN" -> "Зелёный";
+            case "BLUE" -> "Синий";
+            case "VIOLET" -> "Фиолетовый";
+            default -> key;
+        };
+    }
+
+    private String colorEn(String key) {
+        return switch (key) {
+            case "WHITE" -> "White";
+            case "LIGHT_GRAY" -> "Light gray";
+            case "GRAY" -> "Gray";
+            case "PINK" -> "Pink";
+            case "CYAN" -> "Cyan";
+            case "YELLOW" -> "Yellow";
+            case "ORANGE" -> "Orange";
+            case "GREEN" -> "Green";
+            case "BLUE" -> "Blue";
+            case "VIOLET" -> "Violet";
+            default -> key;
+        };
+    }
+
+    private void setBackgroundColor(Color color) {
+        setBgRecursive(rootPanel, color);
+        rootPanel.repaint();
+    }
+
+    private void setBgRecursive(Component c, Color color) {
+        c.setBackground(color);
+        if (c instanceof Container cont) {
+            for (Component child : cont.getComponents()) {
+                setBgRecursive(child, color);
+            }
+        }
+    }
+
     private JPanel buildUi() {
-        JPanel root = new JPanel(new BorderLayout(12, 12));
-        root.setBorder(new EmptyBorder(12, 12, 12, 12));
+        rootPanel = new JPanel(new BorderLayout(12, 12));
+        rootPanel.setBorder(new EmptyBorder(12, 12, 12, 12));
 
-        root.add(buildTopPanel(), BorderLayout.NORTH);
-        root.add(buildOutputPanel(), BorderLayout.CENTER);
-        root.add(buildBottomPanel(), BorderLayout.SOUTH);
+        rootPanel.add(buildTopPanel(), BorderLayout.NORTH);
+        rootPanel.add(buildOutputPanel(), BorderLayout.CENTER);
+        rootPanel.add(buildBottomPanel(), BorderLayout.SOUTH);
 
-        return root;
+        return rootPanel;
     }
 
     private JComponent buildTopPanel() {
-        JPanel top = new JPanel(new BorderLayout(12, 12));
-
         JPanel inputs = new JPanel(new GridBagLayout());
-        inputs.setBorder(BorderFactory.createTitledBorder("Параметры запроса"));
+        paramsBorder = BorderFactory.createTitledBorder("");
+        inputs.setBorder(paramsBorder);
 
         GridBagConstraints c = new GridBagConstraints();
         c.insets = new Insets(6, 6, 6, 6);
         c.fill = GridBagConstraints.HORIZONTAL;
-        c.weightx = 1;
 
-        byCityRadio = new JRadioButton("По городу", true);
-        byCoordRadio = new JRadioButton("По координатам");
-
+        byCityRadio = new JRadioButton();
+        byCoordRadio = new JRadioButton();
         ButtonGroup group = new ButtonGroup();
         group.add(byCityRadio);
         group.add(byCoordRadio);
+        byCityRadio.setSelected(true);
 
-        JPanel modePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        JPanel modePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         modePanel.add(byCityRadio);
         modePanel.add(byCoordRadio);
 
-        c.gridx = 0; c.gridy = 0; c.weightx = 0;
-        inputs.add(new JLabel("Режим:"), c);
-
-        c.gridx = 1; c.gridy = 0; c.weightx = 1;
+        modeLabel = new JLabel();
+        c.gridx = 0; c.gridy = 0;
+        inputs.add(modeLabel, c);
+        c.gridx = 1;
         inputs.add(modePanel, c);
 
-        c.gridx = 0; c.gridy = 1; c.weightx = 0;
-        inputs.add(new JLabel("Город:"), c);
+        cityLabel = new JLabel();
+        c.gridx = 0; c.gridy = 1;
+        inputs.add(cityLabel, c);
 
         cityField = new JTextField();
-        cityField.setToolTipText("Например: Minsk, Москва, New York");
-        c.gridx = 1; c.gridy = 1; c.weightx = 1;
+        c.gridx = 1;
         inputs.add(cityField, c);
 
-        JPanel coordPanel = new JPanel(new GridBagLayout());
-        GridBagConstraints cc = new GridBagConstraints();
-        cc.fill = GridBagConstraints.HORIZONTAL;
+        coordLabel = new JLabel();
+        c.gridx = 0; c.gridy = 2;
+        inputs.add(coordLabel, c);
 
         latField = new JTextField();
         lonField = new JTextField();
 
-        latField.setToolTipText("Широта, например 53.902735");
-        lonField.setToolTipText("Долгота, например 27.555696");
+        JPanel coordPanel = new JPanel(new GridLayout(1, 2, 6, 0));
+        coordPanel.add(latField);
+        coordPanel.add(lonField);
 
-        cc.gridx = 0; cc.gridy = 0; cc.weightx = 1;
-        cc.insets = new Insets(0, 0, 0, 6);
-        coordPanel.add(latField, cc);
-
-        cc.gridx = 1; cc.gridy = 0; cc.weightx = 1;
-        cc.insets = new Insets(0, 6, 0, 0);
-        coordPanel.add(lonField, cc);
-
-        c.gridx = 0; c.gridy = 2; c.weightx = 0;
-        inputs.add(new JLabel("Координаты (lat / lon):"), c);
-
-        c.gridx = 1; c.gridy = 2; c.weightx = 1;
+        c.gridx = 1;
         inputs.add(coordPanel, c);
 
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        clearButton = new JButton("Очистить");
-        fetchButton = new JButton("Получить погоду");
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        clearButton = new JButton();
+        weatherButton = new JButton();
+        forecastButton = new JButton();
 
         buttons.add(clearButton);
-        buttons.add(fetchButton);
+        buttons.add(weatherButton);
+        buttons.add(forecastButton);
 
+        clearButton.addActionListener(e -> onClear());
+        weatherButton.addActionListener(e -> onWeather());
+        forecastButton.addActionListener(e -> onForecast());
+
+        byCityRadio.addActionListener(e -> updateMode());
+        byCoordRadio.addActionListener(e -> updateMode());
+
+        JPanel top = new JPanel(new BorderLayout());
         top.add(inputs, BorderLayout.CENTER);
         top.add(buttons, BorderLayout.SOUTH);
 
-        fetchButton.addActionListener(e -> onFetch());
-        clearButton.addActionListener(e -> onClear());
-
-        byCityRadio.addActionListener(e -> updateModeUi());
-        byCoordRadio.addActionListener(e -> updateModeUi());
-
-        updateModeUi();
-
+        updateMode();
         return top;
     }
 
     private JComponent buildOutputPanel() {
+        iconLabel = new JLabel("", JLabel.CENTER);
+
         outputArea = new JTextArea();
         outputArea.setEditable(false);
         outputArea.setLineWrap(true);
-        outputArea.setWrapStyleWord(true);
-        outputArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
 
         JScrollPane scroll = new JScrollPane(outputArea);
-        scroll.setBorder(BorderFactory.createTitledBorder("Результат"));
+        resultBorder = BorderFactory.createTitledBorder("");
+        scroll.setBorder(resultBorder);
 
-        return scroll;
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(iconLabel, BorderLayout.NORTH);
+        panel.add(scroll, BorderLayout.CENTER);
+
+        return panel;
     }
 
     private JComponent buildBottomPanel() {
-        JPanel bottom = new JPanel(new BorderLayout(12, 12));
-        statusLabel = new JLabel("Готово.");
-        bottom.add(statusLabel, BorderLayout.CENTER);
-        return bottom;
+        statusLabel = new JLabel();
+        return statusLabel;
     }
 
-    private void updateModeUi() {
+    private void updateMode() {
         boolean byCity = byCityRadio.isSelected();
-
         cityField.setEnabled(byCity);
         latField.setEnabled(!byCity);
         lonField.setEnabled(!byCity);
-
-        if (byCity) {
-            latField.setText("");
-            lonField.setText("");
-        } else {
-            cityField.setText("");
-        }
     }
 
     private void onClear() {
@@ -252,179 +359,146 @@ public class Main {
         latField.setText("");
         lonField.setText("");
         outputArea.setText("");
-        statusLabel.setText("Готово.");
-        byCityRadio.setSelected(true);
-        updateModeUi();
+        iconLabel.setIcon(null);
+        statusLabel.setText(tr("Готово.", "Ready."));
     }
 
-    private void onFetch() {
-        URI uri;
+    private void onWeather() {
         try {
-            uri = buildUri();
+            URI uri = buildWeatherUri();
+            sendRequest(uri, this::handleWeather);
         } catch (Exception ex) {
             showError(ex.getMessage());
-            return;
         }
-
-        setBusy(true, "Отправляю запрос...");
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(uri)
-                .timeout(Duration.ofSeconds(15))
-                .GET()
-                .build();
-
-        client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenAccept(response -> SwingUtilities.invokeLater(() -> {
-                    try {
-                        handleResponse(response);
-                    } finally {
-                        setBusy(false, "Готово.");
-                    }
-                }))
-                .exceptionally(ex -> {
-                    SwingUtilities.invokeLater(() -> {
-                        setBusy(false, "Ошибка запроса.");
-                        showError("Ошибка запроса: " + safeMessage(ex));
-                    });
-                    return null;
-                });
     }
 
-    private URI buildUri() {
-        String units = "metric";
-        String lang = "ru";
+    private void onForecast() {
+        try {
+            URI uri = buildForecastUri();
+            sendRequest(uri, this::handleForecast);
+        } catch (Exception ex) {
+            showError(ex.getMessage());
+        }
+    }
 
-        String query;
+    private URI buildWeatherUri() {
         if (byCityRadio.isSelected()) {
             String city = cityField.getText().trim();
-            if (city.isEmpty()) {
-                throw new IllegalArgumentException("Поле 'Город' пустое.");
-            }
-
-            String encodedCity = URLEncoder.encode(city, StandardCharsets.UTF_8);
-            query = "q=" + encodedCity
-                    + "&appid=" + URLEncoder.encode(API_KEY, StandardCharsets.UTF_8)
-                    + "&units=" + units
-                    + "&lang=" + lang;
+            if (city.isEmpty()) throw new IllegalArgumentException(tr("Введите город", "Enter city"));
+            return URI.create(WEATHER_URL + "?q=" + URLEncoder.encode(city, StandardCharsets.UTF_8) +
+                    "&appid=" + API_KEY + "&units=metric&lang=" + currentLang);
         } else {
             String lat = latField.getText().trim();
             String lon = lonField.getText().trim();
-
-            if (lat.isEmpty() || lon.isEmpty()) {
-                throw new IllegalArgumentException("Для режима координат нужно заполнить и lat, и lon.");
-            }
-
-            parseDoubleStrict(lat, "lat");
-            parseDoubleStrict(lon, "lon");
-
-
-            query = "lat=" + URLEncoder.encode(normalizeNumber(lat), StandardCharsets.UTF_8)
-                    + "&lon=" + URLEncoder.encode(normalizeNumber(lon), StandardCharsets.UTF_8)
-                    + "&appid=" + URLEncoder.encode(API_KEY, StandardCharsets.UTF_8)
-                    + "&units=" + units
-                    + "&lang=" + lang;
+            if (lat.isEmpty() || lon.isEmpty()) throw new IllegalArgumentException(tr("Введите координаты", "Enter coordinates"));
+            return URI.create(WEATHER_URL + "?lat=" + lat + "&lon=" + lon +
+                    "&appid=" + API_KEY + "&units=metric&lang=" + currentLang);
         }
-
-        return URI.create(API_BASE + "?" + query);
     }
 
-    private void handleResponse(HttpResponse<String> response) {
-        int code = response.statusCode();
-        String body = response.body();
-
-        if (code != 200) {
-            outputArea.setText("");
-            statusLabel.setText("Ошибка: HTTP " + code);
-            showError("HTTP " + code + "\n\n" + body);
-            return;
+    private URI buildForecastUri() {
+        if (byCityRadio.isSelected()) {
+            String city = cityField.getText().trim();
+            return URI.create(FORECAST_URL + "?q=" + URLEncoder.encode(city, StandardCharsets.UTF_8) +
+                    "&appid=" + API_KEY + "&units=metric&lang=" + currentLang);
+        } else {
+            String lat = latField.getText().trim();
+            String lon = lonField.getText().trim();
+            return URI.create(FORECAST_URL + "?lat=" + lat + "&lon=" + lon +
+                    "&appid=" + API_KEY + "&units=metric&lang=" + currentLang);
         }
+    }
 
-        JSONObject json = new JSONObject(body);
+    private void sendRequest(URI uri, Consumer<HttpResponse<String>> handler) {
+        HttpRequest request = HttpRequest.newBuilder().uri(uri).GET().build();
+        client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenAccept(r -> SwingUtilities.invokeLater(() -> handler.accept(r)));
+    }
 
-        String cityName = json.optString("name", "—");
-        String country = "—";
-        if (json.has("sys")) {
-            country = json.getJSONObject("sys").optString("country", "—");
+    private void handleWeather(HttpResponse<String> r) {
+        JSONObject json = new JSONObject(r.body());
+        JSONObject main = json.getJSONObject("main");
+        JSONObject wind = json.getJSONObject("wind");
+        JSONObject w0 = json.getJSONArray("weather").getJSONObject(0);
+
+        setIcon(w0.getString("icon"));
+
+        outputArea.setText(
+                tr("Город: ", "City: ") + json.getString("name") + "\n" +
+
+        tr("Погода: ", "Weather: ") + w0.getString("description") + "\n" +
+                tr("Температура: ", "Temperature: ") + main.getDouble("temp") + " °C\n" +
+                tr("Ветер: ", "Wind: ") + wind.getDouble("speed") + " m/s"
+        );
+    }
+
+    private void handleForecast(HttpResponse<String> r) {
+        JSONObject json = new JSONObject(r.body());
+        JSONArray list = json.getJSONArray("list");
+
+        StringBuilder sb = new StringBuilder(tr("Прогноз:\n\n", "Forecast:\n\n"));
+        for (int i = 0; i < list.length(); i += 8) {
+            JSONObject item = list.getJSONObject(i);
+            JSONObject w = item.getJSONArray("weather").getJSONObject(0);
+            JSONObject m = item.getJSONObject("main");
+
+            sb.append(item.getString("dt_txt")).append("\n");
+            sb.append(w.getString("description")).append(", ");
+            sb.append(tr("темп.: ", "temp: ")).append(m.getDouble("temp")).append(" °C\n\n");
         }
-
-        JSONObject main = json.optJSONObject("main");
-        double temp = main != null ? main.optDouble("temp", Double.NaN) : Double.NaN;
-        double feels = main != null ? main.optDouble("feels_like", Double.NaN) : Double.NaN;
-        int humidity = main != null ? main.optInt("humidity", -1) : -1;
-        int pressure = main != null ? main.optInt("pressure", -1) : -1;
-
-        String description = "—";
-        JSONArray weatherArr = json.optJSONArray("weather");
-        if (weatherArr != null && !weatherArr.isEmpty()) {
-            JSONObject w0 = weatherArr.optJSONObject(0);
-            if (w0 != null) {
-                description = w0.optString("description", "—");
-            }
-        }
-
-        double wind = Double.NaN;
-        JSONObject windObj = json.optJSONObject("wind");
-        if (windObj != null) {
-            wind = windObj.optDouble("speed", Double.NaN);
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Локация: ").append(cityName).append(" (").append(country).append(")\n");
-        sb.append("Погода: ").append(description).append("\n\n");
-
-        sb.append("Температура: ").append(formatNum(temp)).append(" °C\n");
-        sb.append("Ощущается как: ").append(formatNum(feels)).append(" °C\n");
-        sb.append("Влажность: ").append(humidity >= 0 ? humidity + " %" : "—").append("\n");
-        sb.append("Давление: ").append(pressure >= 0 ? pressure + " hPa" : "—").append("\n");
-        sb.append("Ветер: ").append(formatNum(wind)).append(" м/с\n");
-
         outputArea.setText(sb.toString());
-        outputArea.setCaretPosition(0);
-        statusLabel.setText("Успешно: HTTP 200");
+        iconLabel.setIcon(null);
     }
 
-    private void setBusy(boolean busy, String status) {
-        fetchButton.setEnabled(!busy);
-        clearButton.setEnabled(!busy);
-
-        byCityRadio.setEnabled(!busy);
-        byCoordRadio.setEnabled(!busy);
-
-        boolean byCity = byCityRadio.isSelected();
-        cityField.setEnabled(!busy && byCity);
-        latField.setEnabled(!busy && !byCity);
-        lonField.setEnabled(!busy && !byCity);
-
-        statusLabel.setText(status);
-        frame.setCursor(busy ? Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR) : Cursor.getDefaultCursor());
-    }
-
-    private void showError(String message) {
-        JOptionPane.showMessageDialog(frame, message, "Ошибка", JOptionPane.ERROR_MESSAGE);
-    }
-
-    private static void parseDoubleStrict(String value, String field) {
+    private void setIcon(String iconCode) {
         try {
-            Double.parseDouble(normalizeNumber(value));
-        } catch (Exception ex) {
-            throw new IllegalArgumentException("Некорректное число в поле " + field + ": " + value);
+            URL url = new URL("https://openweathermap.org/img/wn/" + iconCode + "@2x.png");
+            iconLabel.setIcon(new ImageIcon(url));
+        } catch (Exception e) {
+            iconLabel.setIcon(null);
         }
     }
 
-    private static String normalizeNumber(String value) {
-        return value.replace(',', '.');
+    private void switchLanguage(boolean ru) {
+        isRussian = ru;
+        currentLang = ru ? "ru" : "en";
+        applyLanguage();
+        buildColorMenu();
     }
 
-    private static String formatNum(double v) {
-        if (Double.isNaN(v)) return "—";
-        return String.format(java.util.Locale.US, "%.1f", v).replace('.', ',');
+    private void applyLanguage() {
+        frame.setTitle(tr("Погода", "Weather"));
+
+        menuLanguage.setText(tr("Выбор языка", "Language"));
+        menuColor.setText(tr("Цвет фона", "Background color"));
+        menuAbout.setText(tr("О программе", "About"));
+
+        menuRu.setText(tr("Русский", "Russian"));
+        menuEn.setText(tr("Английский", "English"));
+
+        modeLabel.setText(tr("Режим:", "Mode:"));
+        cityLabel.setText(tr("Город:", "City:"));
+        coordLabel.setText(tr("Координаты (lat / lon):", "Coordinates (lat / lon):"));
+
+        byCityRadio.setText(tr("По городу", "By city"));
+        byCoordRadio.setText(tr("По координатам", "By coordinates"));
+
+        weatherButton.setText(tr("Текущая погода", "Current weather"));
+        forecastButton.setText(tr("Прогноз на 5 дней", "5-day forecast"));
+        clearButton.setText(tr("Очистить", "Clear"));
+
+        paramsBorder.setTitle(tr("Параметры", "Parameters"));
+        resultBorder.setTitle(tr("Результат", "Result"));
+
     }
 
-    private static String safeMessage(Throwable ex) {
-        Throwable cur = ex;
-        while (cur.getCause() != null) cur = cur.getCause();
-        String msg = cur.getMessage();
-        return msg == null ? cur.getClass().getSimpleName() : msg;
+    private String tr(String ru, String en) {
+        return isRussian ? ru : en;
+    }
+
+    private void showError(String msg) {
+        JOptionPane.showMessageDialog(frame, msg,
+                tr("Ошибка", "Error"),
+                JOptionPane.ERROR_MESSAGE);
     }
 }
